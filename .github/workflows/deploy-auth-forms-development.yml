@@ -125,3 +125,22 @@ jobs:
 
             FQDN=$(az containerapp show --name 'function-platform-test' --resource-group 'contenedores' --query properties.configuration.ingress.fqdn -o tsv)
             echo "Container App desplegada en https://$FQDN"
+
+      - name: Sync deployed URLs with AuthSystem
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -e
+            FQDN=$(az containerapp show --name 'function-platform-test' --resource-group 'contenedores' --query properties.configuration.ingress.fqdn -o tsv)
+            DEPLOY_BASE_URL="https://$FQDN"
+
+            CALLBACK_RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST 'https://sfqtmnncgiqkveaoqckt.supabase.co/functions/v1/sync-environment-deployment-url'               -H "Content-Type: application/json"               -H "x-deploy-token: ${{ secrets.AUTHSYSTEM_DEPLOY_CALLBACK_TOKEN }}"               -d "{"environment_id":"e1a29900-b2e9-442c-a557-49b67f566bdf","deployed_base_url":"$DEPLOY_BASE_URL","deployment_provider":"azure_container_apps","azure_container_app_name":"function-platform-test","azure_containerapps_environment":"function-platform-test-env"}")
+
+            CALLBACK_HTTP_CODE=$(echo "$CALLBACK_RESPONSE" | tail -n 1)
+            CALLBACK_BODY=$(echo "$CALLBACK_RESPONSE" | sed '$d')
+            echo "$CALLBACK_BODY"
+
+            if [ "$CALLBACK_HTTP_CODE" -lt 200 ] || [ "$CALLBACK_HTTP_CODE" -ge 300 ]; then
+              echo "::error::No se pudo sincronizar la URL desplegada con AuthSystem"
+              exit 1
+            fi
