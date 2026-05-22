@@ -50,13 +50,16 @@ jobs:
             if az containerapp env show --name "$ACA_ENV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
               echo "ACA Environment $ACA_ENV_NAME encontrado"
             elif true; then
-              if ! ACA_ENV_CREATE_OUTPUT=$(az containerapp env create --name "$ACA_ENV_NAME" --resource-group "$RG_NAME" --location "$RG_LOCATION" 2>&1); then
+              if ! ACA_ENV_CREATE_OUTPUT=$(az containerapp env create --name "$ACA_ENV_NAME" --resource-group "$RG_NAME" --location "$RG_LOCATION" --logs-destination none 2>&1); then
                 echo "$ACA_ENV_CREATE_OUTPUT"
                 if echo "$ACA_ENV_CREATE_OUTPUT" | grep -q "Microsoft.App/register/action"; then
                   echo "::error::La suscripcion todavia no tiene registrado Microsoft.App. Un administrador de la suscripcion debe ejecutar una sola vez: az provider register --namespace Microsoft.App --wait y az provider register --namespace Microsoft.OperationalInsights --wait"
                 fi
                 if echo "$ACA_ENV_CREATE_OUTPUT" | grep -q "Microsoft.OperationalInsights/register/action"; then
                   echo "::error::La suscripcion todavia no tiene registrado Microsoft.OperationalInsights. Un administrador de la suscripcion debe ejecutar una sola vez: az provider register --namespace Microsoft.OperationalInsights --wait"
+                fi
+                if echo "$ACA_ENV_CREATE_OUTPUT" | grep -q "Microsoft.OperationalInsights/workspaces/write"; then
+                  echo "::error::Azure intento crear un Log Analytics Workspace, pero este flujo ahora espera crear el ACA Environment sin logs centralizados. Vuelve a generar el workflow desde AuthSystem o elimina la creacion automatica de workspace en el YAML actual."
                 fi
                 exit 1
               fi
