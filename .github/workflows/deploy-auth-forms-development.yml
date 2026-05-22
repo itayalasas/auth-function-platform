@@ -71,31 +71,57 @@ jobs:
 
             echo "ACA_ENV_NAME=$ACA_ENV_NAME" >> "$GITHUB_ENV"
 
+      - name: Ensure Azure Container Registry
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -e
+            RG_NAME='contenedores'
+            RG_LOCATION='North Central US'
+            ACR_NAME='functionplatformsu47dacr'
+
+            if az acr show --name "$ACR_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+              echo "Azure Container Registry $ACR_NAME encontrado"
+            else
+              az acr create --name "$ACR_NAME" --resource-group "$RG_NAME" --sku Basic --admin-enabled true --location "$RG_LOCATION"
+            fi
+
+            az acr update --name "$ACR_NAME" --resource-group "$RG_NAME" --admin-enabled true >/dev/null
+
+            ACR_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$RG_NAME" --query loginServer -o tsv)
+            ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --resource-group "$RG_NAME" --query username -o tsv)
+            ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --resource-group "$RG_NAME" --query "passwords[0].value" -o tsv)
+            IMAGE_REPOSITORY='auth-forms-development'
+            IMAGE_TAG='${{ github.sha }}'
+
+            echo "ACR_NAME=$ACR_NAME" >> "$GITHUB_ENV"
+            echo "ACR_SERVER=$ACR_SERVER" >> "$GITHUB_ENV"
+            echo "ACR_USERNAME=$ACR_USERNAME" >> "$GITHUB_ENV"
+            echo "ACR_PASSWORD=$ACR_PASSWORD" >> "$GITHUB_ENV"
+            echo "IMAGE_REPOSITORY=$IMAGE_REPOSITORY" >> "$GITHUB_ENV"
+            echo "IMAGE_TAG=$IMAGE_TAG" >> "$GITHUB_ENV"
+
+      - name: Build and push image to ACR
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -e
+            az acr build               --registry "$ACR_NAME"               --resource-group 'contenedores'               --file Dockerfile               --image "$IMAGE_REPOSITORY:$IMAGE_TAG"               .
+
       - name: Deploy to Azure Container Apps
         uses: azure/cli@v2
         with:
           inlineScript: |
             set -e
-            if ! ACA_DEPLOY_OUTPUT=$(az containerapp up \
-              --name 'function-platform-test' \
-              --resource-group 'contenedores' \
-              --location 'North Central US' \
-              --environment "$ACA_ENV_NAME" \
-              --source . \
-              --target-port 8080 \
-              --ingress external \
-              --env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ' 2>&1); then
-              echo "$ACA_DEPLOY_OUTPUT"
-              if echo "$ACA_DEPLOY_OUTPUT" | grep -q "Microsoft.App/register/action"; then
-                echo "::error::La suscripcion todavia no tiene registrado Microsoft.App. Un administrador de la suscripcion debe ejecutar una sola vez: az provider register --namespace Microsoft.App --wait y az provider register --namespace Microsoft.OperationalInsights --wait"
-              fi
-              if echo "$ACA_DEPLOY_OUTPUT" | grep -q "Microsoft.OperationalInsights/register/action"; then
-                echo "::error::La suscripcion todavia no tiene registrado Microsoft.OperationalInsights. Un administrador de la suscripcion debe ejecutar una sola vez: az provider register --namespace Microsoft.OperationalInsights --wait"
-              fi
-              exit 1
-            fi
+            IMAGE_REF="$ACR_SERVER/$IMAGE_REPOSITORY:$IMAGE_TAG"
 
-            echo "$ACA_DEPLOY_OUTPUT"
+            if az containerapp show --name 'function-platform-test' --resource-group 'contenedores' >/dev/null 2>&1; then
+              az containerapp registry set                 --name 'function-platform-test'                 --resource-group 'contenedores'                 --server "$ACR_SERVER"                 --username "$ACR_USERNAME"                 --password "$ACR_PASSWORD"
+
+              az containerapp update                 --name 'function-platform-test'                 --resource-group 'contenedores'                 --image "$IMAGE_REF"                 --set-env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
+            else
+              az containerapp create                 --name 'function-platform-test'                 --resource-group 'contenedores'                 --environment "$ACA_ENV_NAME"                 --image "$IMAGE_REF"                 --target-port 8080                 --ingress external                 --registry-server "$ACR_SERVER"                 --registry-username "$ACR_USERNAME"                 --registry-password "$ACR_PASSWORD"                 --env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
+            fi
 
             FQDN=$(az containerapp show --name 'function-platform-test' --resource-group 'contenedores' --query properties.configuration.ingress.fqdn -o tsv)
             echo "Container App desplegada en https://$FQDN"
