@@ -26,23 +26,44 @@ jobs:
         with:
           inlineScript: |
             az extension add --name containerapp --upgrade
-            az provider register --namespace Microsoft.App --wait
-            az provider register --namespace Microsoft.OperationalInsights --wait
+            echo "Azure Container Apps extension instalada."
+            echo "Nota: Microsoft.App y Microsoft.OperationalInsights deben estar registrados previamente en la suscripcion por un administrador."
 
       - name: Ensure Azure resources
         uses: azure/cli@v2
         with:
           inlineScript: |
             set -e
-            az group create --name 'contenedores' --location 'North Central US'
+            RG_NAME='contenedores'
+            RG_LOCATION='North Central US'
+
+            if az group show --name "$RG_NAME" >/dev/null 2>&1; then
+              echo "Resource Group $RG_NAME encontrado"
+            elif true; then
+              az group create --name "$RG_NAME" --location "$RG_LOCATION"
+            else
+              echo "::error::El Resource Group $RG_NAME no existe y la creacion automatica esta desactivada."
+              exit 1
+            fi
 
             ACA_ENV_NAME='function-platform-test-env'
-            if true; then
-              if ! az containerapp env show --name "$ACA_ENV_NAME" --resource-group 'contenedores' >/dev/null 2>&1; then
-                az containerapp env create --name "$ACA_ENV_NAME" --resource-group 'contenedores' --location 'North Central US'
+            if az containerapp env show --name "$ACA_ENV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
+              echo "ACA Environment $ACA_ENV_NAME encontrado"
+            elif true; then
+              if ! ACA_ENV_CREATE_OUTPUT=$(az containerapp env create --name "$ACA_ENV_NAME" --resource-group "$RG_NAME" --location "$RG_LOCATION" 2>&1); then
+                echo "$ACA_ENV_CREATE_OUTPUT"
+                if echo "$ACA_ENV_CREATE_OUTPUT" | grep -q "Microsoft.App/register/action"; then
+                  echo "::error::La suscripcion todavia no tiene registrado Microsoft.App. Un administrador de la suscripcion debe ejecutar una sola vez: az provider register --namespace Microsoft.App --wait y az provider register --namespace Microsoft.OperationalInsights --wait"
+                fi
+                if echo "$ACA_ENV_CREATE_OUTPUT" | grep -q "Microsoft.OperationalInsights/register/action"; then
+                  echo "::error::La suscripcion todavia no tiene registrado Microsoft.OperationalInsights. Un administrador de la suscripcion debe ejecutar una sola vez: az provider register --namespace Microsoft.OperationalInsights --wait"
+                fi
+                exit 1
               fi
+              echo "$ACA_ENV_CREATE_OUTPUT"
             else
-              az containerapp env show --name "$ACA_ENV_NAME" --resource-group 'contenedores' >/dev/null
+              echo "::error::El ACA Environment $ACA_ENV_NAME no existe y la creacion automatica esta desactivada."
+              exit 1
             fi
 
             echo "ACA_ENV_NAME=$ACA_ENV_NAME" >> "$GITHUB_ENV"
@@ -52,7 +73,7 @@ jobs:
         with:
           inlineScript: |
             set -e
-            az containerapp up \
+            if ! ACA_DEPLOY_OUTPUT=$(az containerapp up \
               --name 'function-platform-test' \
               --resource-group 'contenedores' \
               --location 'North Central US' \
@@ -60,7 +81,18 @@ jobs:
               --source . \
               --target-port 8080 \
               --ingress external \
-              --env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
+              --env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ' 2>&1); then
+              echo "$ACA_DEPLOY_OUTPUT"
+              if echo "$ACA_DEPLOY_OUTPUT" | grep -q "Microsoft.App/register/action"; then
+                echo "::error::La suscripcion todavia no tiene registrado Microsoft.App. Un administrador de la suscripcion debe ejecutar una sola vez: az provider register --namespace Microsoft.App --wait y az provider register --namespace Microsoft.OperationalInsights --wait"
+              fi
+              if echo "$ACA_DEPLOY_OUTPUT" | grep -q "Microsoft.OperationalInsights/register/action"; then
+                echo "::error::La suscripcion todavia no tiene registrado Microsoft.OperationalInsights. Un administrador de la suscripcion debe ejecutar una sola vez: az provider register --namespace Microsoft.OperationalInsights --wait"
+              fi
+              exit 1
+            fi
+
+            echo "$ACA_DEPLOY_OUTPUT"
 
             FQDN=$(az containerapp show --name 'function-platform-test' --resource-group 'contenedores' --query properties.configuration.ingress.fqdn -o tsv)
             echo "Container App desplegada en https://$FQDN"
