@@ -1,0 +1,66 @@
+name: Deploy auth forms (development)
+
+on:
+  push:
+    branches:
+      - test
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Install Container Apps extension
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            az extension add --name containerapp --upgrade
+            az provider register --namespace Microsoft.App --wait
+            az provider register --namespace Microsoft.OperationalInsights --wait
+
+      - name: Ensure Azure resources
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -e
+            az group create --name 'contenedores' --location 'North Central US'
+
+            ACA_ENV_NAME='function-platform-test-env'
+            if true; then
+              if ! az containerapp env show --name "$ACA_ENV_NAME" --resource-group 'contenedores' >/dev/null 2>&1; then
+                az containerapp env create --name "$ACA_ENV_NAME" --resource-group 'contenedores' --location 'North Central US'
+              fi
+            else
+              az containerapp env show --name "$ACA_ENV_NAME" --resource-group 'contenedores' >/dev/null
+            fi
+
+            echo "ACA_ENV_NAME=$ACA_ENV_NAME" >> "$GITHUB_ENV"
+
+      - name: Deploy to Azure Container Apps
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -e
+            az containerapp up \
+              --name 'function-platform-test' \
+              --resource-group 'contenedores' \
+              --location 'North Central US' \
+              --environment "$ACA_ENV_NAME" \
+              --source . \
+              --target-port 8080 \
+              --ingress external \
+              --env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
+
+            FQDN=$(az containerapp show --name 'function-platform-test' --resource-group 'contenedores' --query properties.configuration.ingress.fqdn -o tsv)
+            echo "Container App desplegada en https://$FQDN"
