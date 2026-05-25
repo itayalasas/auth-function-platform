@@ -1,9 +1,9 @@
-name: Deploy auth forms (development)
+name: Deploy auth forms (production)
 
 on:
   push:
     branches:
-      - test
+      - main
   workflow_dispatch:
 
 jobs:
@@ -46,7 +46,7 @@ jobs:
               exit 1
             fi
 
-            ACA_ENV_NAME='function-platform-test-env'
+            ACA_ENV_NAME='function-platform-production-env'
             if az containerapp env show --name "$ACA_ENV_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
               echo "ACA Environment $ACA_ENV_NAME encontrado"
             elif true; then
@@ -78,7 +78,7 @@ jobs:
             set -e
             RG_NAME='contenedores'
             RG_LOCATION='North Central US'
-            ACR_NAME='functionplatformsu47dacr'
+            ACR_NAME='functionplatformoc27vxacr'
 
             if az acr show --name "$ACR_NAME" --resource-group "$RG_NAME" >/dev/null 2>&1; then
               echo "Azure Container Registry $ACR_NAME encontrado"
@@ -91,7 +91,7 @@ jobs:
             ACR_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$RG_NAME" --query loginServer -o tsv)
             ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --resource-group "$RG_NAME" --query username -o tsv)
             ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --resource-group "$RG_NAME" --query "passwords[0].value" -o tsv)
-            IMAGE_REPOSITORY='auth-forms-development'
+            IMAGE_REPOSITORY='auth-forms-production'
             IMAGE_TAG='${{ github.sha }}'
 
             echo "ACR_NAME=$ACR_NAME" >> "$GITHUB_ENV"
@@ -115,15 +115,15 @@ jobs:
             set -e
             IMAGE_REF="$ACR_SERVER/$IMAGE_REPOSITORY:$IMAGE_TAG"
 
-            if az containerapp show --name 'function-platform-test' --resource-group 'contenedores' >/dev/null 2>&1; then
-              az containerapp registry set                 --name 'function-platform-test'                 --resource-group 'contenedores'                 --server "$ACR_SERVER"                 --username "$ACR_USERNAME"                 --password "$ACR_PASSWORD"
+            if az containerapp show --name 'function-platform-production' --resource-group 'contenedores' >/dev/null 2>&1; then
+              az containerapp registry set                 --name 'function-platform-production'                 --resource-group 'contenedores'                 --server "$ACR_SERVER"                 --username "$ACR_USERNAME"                 --password "$ACR_PASSWORD"
 
-              az containerapp update                 --name 'function-platform-test'                 --resource-group 'contenedores'                 --image "$IMAGE_REF"                 --set-env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
+              az containerapp update                 --name 'function-platform-production'                 --resource-group 'contenedores'                 --image "$IMAGE_REF"                 --set-env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
             else
-              az containerapp create                 --name 'function-platform-test'                 --resource-group 'contenedores'                 --environment "$ACA_ENV_NAME"                 --image "$IMAGE_REF"                 --target-port 8080                 --ingress external                 --registry-server "$ACR_SERVER"                 --registry-username "$ACR_USERNAME"                 --registry-password "$ACR_PASSWORD"                 --env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
+              az containerapp create                 --name 'function-platform-production'                 --resource-group 'contenedores'                 --environment "$ACA_ENV_NAME"                 --image "$IMAGE_REF"                 --target-port 8080                 --ingress external                 --registry-server "$ACR_SERVER"                 --registry-username "$ACR_USERNAME"                 --registry-password "$ACR_PASSWORD"                 --env-vars PORT=8080 NODE_ENV=production VITE_SUPABASE_URL='https://sfqtmnncgiqkveaoqckt.supabase.co' VITE_SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmcXRtbm5jZ2lxa3ZlYW9xY2t0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4MDEyNDMsImV4cCI6MjA3NTM3NzI0M30.n2yaYrfHDLAFePP1tA3-250P6bgKmf696fYJFHfRZaQ'
             fi
 
-            FQDN=$(az containerapp show --name 'function-platform-test' --resource-group 'contenedores' --query properties.configuration.ingress.fqdn -o tsv)
+            FQDN=$(az containerapp show --name 'function-platform-production' --resource-group 'contenedores' --query properties.configuration.ingress.fqdn -o tsv)
             echo "Container App desplegada en https://$FQDN"
 
       - name: Sync deployed URLs with AuthSystem
@@ -131,7 +131,7 @@ jobs:
         with:
           inlineScript: |
             set -e
-            FQDN=$(az containerapp show --name 'function-platform-test' --resource-group 'contenedores' --query properties.configuration.ingress.fqdn -o tsv)
+            FQDN=$(az containerapp show --name 'function-platform-production' --resource-group 'contenedores' --query properties.configuration.ingress.fqdn -o tsv)
             DEPLOY_BASE_URL="https://$FQDN"
             if [ -z "$FQDN" ]; then
               echo "::error::No se pudo resolver el FQDN final de la Container App"
@@ -140,15 +140,15 @@ jobs:
 
             cat > sync-deployment-url.json <<EOF
             {
-              "environment_id": "e1a29900-b2e9-442c-a557-49b67f566bdf",
+              "environment_id": "2eada919-f635-42de-87be-60fd68c4aa8d",
               "deployed_base_url": "$DEPLOY_BASE_URL",
               "deployment_provider": "azure_container_apps",
-              "azure_container_app_name": "function-platform-test",
-              "azure_containerapps_environment": "function-platform-test-env"
+              "azure_container_app_name": "function-platform-production",
+              "azure_containerapps_environment": "function-platform-production-env"
             }
             EOF
 
-            echo "Sincronizando URLs del ambiente e1a29900-b2e9-442c-a557-49b67f566bdf con base $DEPLOY_BASE_URL"
+            echo "Sincronizando URLs del ambiente 2eada919-f635-42de-87be-60fd68c4aa8d con base $DEPLOY_BASE_URL"
 
             CALLBACK_RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST 'https://sfqtmnncgiqkveaoqckt.supabase.co/functions/v1/sync-environment-deployment-url'               -H "Content-Type: application/json"               -H "x-deploy-token: ${{ secrets.AUTHSYSTEM_DEPLOY_CALLBACK_TOKEN }}"               --data-binary @sync-deployment-url.json)
 
